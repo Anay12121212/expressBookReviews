@@ -10,8 +10,27 @@ app.use(express.json());
 
 app.use("/customer",session({secret:"fingerprint_customer",resave: true, saveUninitialized: true}))
 
-app.use("/customer/auth/*", function auth(req,res,next){
-//Write the authenication mechanism here
+app.use('/customer/auth/*', function auth(req, res, next) {
+  const authorization = req.session.authorization;
+
+  if (!authorization || !authorization.accessToken) {
+    return res.status(401).json({
+      message: 'Please log in first'
+    });
+  }
+
+  jwt.verify(authorization.accessToken, 'access', (err, decoded) => {
+    if (err) {
+      req.session.authorization = null;
+
+      return res.status(401).json({
+        message: 'Invalid or expired token. Please log in again'
+      });
+    }
+
+    req.user = decoded;
+    next();
+  });
 });
  
 const PORT =5000;
