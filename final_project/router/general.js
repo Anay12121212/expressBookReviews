@@ -1,9 +1,16 @@
 
 const express = require('express');
-const books = require('./booksdb.js');
+const axios = require('axios');
 const { users } = require('./auth_users.js');
-
 const public_users = express.Router();
+
+const BOOKS_API_URL =
+  process.env.BOOKS_API_URL || 'http://localhost:5000/books-data';
+
+async function fetchBooks() {
+  const response = await axios.get(BOOKS_API_URL);
+  return response.data;
+}
 
 // Register a new user
 public_users.post('/register', (req, res) => {
@@ -16,9 +23,7 @@ public_users.post('/register', (req, res) => {
   }
 
   if (users.some(user => user.username === username)) {
-    return res.status(409).json({
-      message: 'User already exists'
-    });
+    return res.status(409).json({ message: 'User already exists' });
   }
 
   users.push({ username, password });
@@ -28,53 +33,98 @@ public_users.post('/register', (req, res) => {
   });
 });
 
-// Retrieve all books
-public_users.get('/', (req, res) => {
+// Data endpoint used by Axios
+public_users.get('/books-data', (req, res) => {
+  const books = require('./booksdb.js');
   return res.status(200).json(books);
 });
 
-// Retrieve a book by its ISBN/key
-public_users.get('/isbn/:isbn', (req, res) => {
-  const book = books[req.params.isbn];
-
-  if (!book) {
-    return res.status(404).json({ message: 'Book not found' });
+// Retrieve all books
+public_users.get('/', async (req, res) => {
+  try {
+    const books = await fetchBooks();
+    return res.status(200).json(books);
+  } catch (error) {
+    return res.status(502).json({
+      message: 'Unable to retrieve books'
+    });
   }
-
-  return res.status(200).json(book);
 });
 
-// Retrieve books by author (case-insensitive)
-public_users.get('/author/:author', (req, res) => {
-  const author = req.params.author.toLowerCase();
+// Retrieve a book by ISBN
+public_users.get('/isbn/:isbn', async (req, res) => {
+  try {
+    const books = await fetchBooks();
+    const book = books[req.params.isbn];
 
-  const results = Object.values(books).filter(book =>
-    book.author.toLowerCase() === author
-  );
+    if (!book) {
+      return res.status(404).json({ message: 'Book not found' });
+    }
 
-  return res.status(200).json(results);
+    return res.status(200).json(book);
+  } catch (error) {
+    return res.status(502).json({
+      message: 'Unable to retrieve book'
+    });
+  }
 });
 
-// Retrieve books by title (case-insensitive)
-public_users.get('/title/:title', (req, res) => {
-  const title = req.params.title.toLowerCase();
+// Retrieve books by author
+public_users.get('/author/:author', async (req, res) => {
+  try {
+    const books = await fetchBooks();
+    const author = req.params.author.toLowerCase();
 
-  const results = Object.values(books).filter(book =>
-    book.title.toLowerCase() === title
-  );
+    const results = Object.entries(books)
+      .filter(([isbn, book]) =>
+        book.author.toLowerCase() === author
+      )
+      .map(([isbn, book]) => ({ isbn, ...book }));
 
-  return res.status(200).json(results);
+    return res.status(200).json(results);
+  } catch (error) {
+    return res.status(502).json({
+      message: 'Unable to retrieve books'
+    });
+  }
+});
+
+// Retrieve books by title
+public_users.get('/title/:title', async (req, res) => {
+  try {
+    const books = await fetchBooks();
+    const title = req.params.title.toLowerCase();
+
+    const results = Object.entries(books)
+      .filter(([isbn, book]) =>
+        book.title.toLowerCase() === title
+      )
+      .map(([isbn, book]) => ({ isbn, ...book }));
+
+    return res.status(200).json(results);
+  } catch (error) {
+    return res.status(502).json({
+      message: 'Unable to retrieve books'
+    });
+  }
 });
 
 // Retrieve reviews for a book
-public_users.get('/review/:isbn', (req, res) => {
-  const book = books[req.params.isbn];
+public_users.get('/review/:isbn', async (req, res) => {
+  try {
+    const books = await fetchBooks();
+    const book = books[req.params.isbn];
 
-  if (!book) {
-    return res.status(404).json({ message: 'Book not found' });
+    if (!book) {
+      return res.status(404).json({ message: 'Book not found' });
+    }
+
+    return res.status(200).json(book.reviews || {});
+  } catch (error) {
+    return res.status(502).json({
+      message: 'Unable to retrieve reviews'
+    });
   }
-
-  return res.status(200).json(book.reviews || {});
 });
 
 module.exports.general = public_users;
